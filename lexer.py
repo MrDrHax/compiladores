@@ -21,7 +21,7 @@ class LexerData:
         self.token_list = []
 
     def addToken(self, tokenType, tokenValue):
-        self.token_list.append((tokenType, tokenValue))
+        self.token_list.append((tokenType, tokenValue, (self.pos, self.ln, self.col, self.token_last)))
         _printToken(tokenType, tokenValue)
 
 

@@ -5,7 +5,7 @@ class TokenType(Enum):
     ENDFILE = '$'
     EOL = '\n'
 
-    SYMBOLS = '+-*/<>!;,()[]{}'
+    SYMBOLS = '+-*/<>!;,()[]{}='
     SAFE_SYMBOLS = '\n;, $'
 
     S_PLUS = '+'
