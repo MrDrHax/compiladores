@@ -8,6 +8,9 @@ consecutive = 0
 
 latestError = None
 
+treeStart = None
+
+
 class Node:
     _id: int
     _children: list['Node']
@@ -20,7 +23,7 @@ class Node:
 
     _final: bool
 
-    def __init__(self, id: int, parent: 'Node', depth: int, action: 'State', final = False):
+    def __init__(self, id: int, parent: 'Node', depth: int, action: 'State', final=False):
         self._id = id
         self._parent = parent
 
@@ -38,26 +41,26 @@ class Node:
         self._children.append(child)
 
         return child
-    
+
     def addFinalChild(self, id: int, token) -> 'Node':
-        child = Node(id, self, self._depth + 1, None, final= True)
+        child = Node(id, self, self._depth + 1, None, final=True)
         child._token = token
         self._children.append(child)
 
         return child
 
-    def print(self, withChild = False):
+    def print(self, withChild=False):
         if self._final:
             logger.debug(
-                f'{'|'.join(['' for _ in range(self._depth)])}> {self._token}')
+                f'{'|'.join(['' for _ in range(self._depth+1)])}> ~ {self._token}')
         else:
             logger.debug(
-            f'{'|'.join(['' for _ in range(self._depth)])}> {self._action.name} ({self._token})')
-        
+                f'{'|'.join(['' for _ in range(self._depth+1)])}> {self._action.name} {self._token}')
+
         if withChild:
             for ch in self._children:
                 ch.print(withChild)
-        
+
     def iterate(self, tokens: list):
         global latestError
         works = False
@@ -66,7 +69,7 @@ class Node:
         if len(tokens) == 0:
             return True, 0
 
-        self._token = tokens[0][0]
+        self._token = tokens[0]
 
         self.print()
 
@@ -83,22 +86,23 @@ class Node:
                     if isinstance(element, State):
                         # Add a child node and recursively iterate on remaining tokens
                         child = self.addChild(
-                            self._id + len(self._children) + 1, element)
+                            self._id + len(self._children) + 1,
+                            element,
+                        )
                         result, count = child.iterate(
-                            tokens[tokenCount + current_token_index:])
+                            tokens[tokenCount + current_token_index:],
+                        )
 
                         if result:
                             current_token_index += count
                             children.append(child)
                         else:
                             success = False
-                            print("error 1")
                             break
 
                     elif isinstance(element, TokenType):
                         if tokenCount + current_token_index >= len(tokens):
                             success = False
-                            print("error 2")
                             break
 
                         current_token_type = tokens[tokenCount +
@@ -106,30 +110,30 @@ class Node:
 
                         if current_token_type == element.name:
                             self.addFinalChild(1, tokens[tokenCount +
-                                                        current_token_index])
+                                                         current_token_index])
                             current_token_index += 1
                         else:
                             success = False
-                            print("error 3")
                             break
 
                     else:
                         success = False
-                        print("error 4")
                         break
             except Exception as e:
                 success = False
-                print(f'error {e.with_traceback(None)}')
+                print(f'not accounted for error {e.with_traceback(None)}')
 
             if success:
                 self._token = tokens[tokenCount + current_token_index - 1]
                 tokenCount += current_token_index
                 works = True
+                latestError = None
                 break
             else:
                 # Remove any children added in this loop iteration
                 self._children = []
-                latestError = tokens[tokenCount - 1]
+                if not latestError:
+                    latestError = tokens[tokenCount]
 
         return works, tokenCount
 
@@ -175,13 +179,16 @@ actions = {
     "simple-expression": State("simple-expression"),
     "relop": State("relop"),
     "additive-expression": State("additive-expression"),
+    "additive-expression*": State("additive-expression*"),
     "addop": State("addop"),
     "term": State("term"),
+    "term*": State("term*"),
     "mulop": State("mulop"),
     "factor": State("factor"),
     "call": State("call"),
     "args": State("args"),
     "arg-list": State("arg-list"),
+    "arg-list*": State("arg-list*"),
 
 }
 
@@ -231,12 +238,12 @@ actions['compound-stmt'].addPossibility(
 
 # local-declarations
 actions['local-declarations'].addPossibility(
-    [actions["local-declarations"], actions["var-declaration"]])
-actions['local-declarations'].addPossibility([ ])
+    [actions["var-declaration"], actions["local-declarations"]])
+actions['local-declarations'].addPossibility([])
 
 # statement-list
 actions['statement-list'].addPossibility(
-    [actions["statement-list"], actions["statement"]])
+    [actions["statement"], actions["statement-list"]])
 actions['statement-list'].addPossibility([])
 
 # statement
@@ -267,13 +274,13 @@ actions['return-stmt'].addPossibility([TokenType.RETURN,
 
 # expression
 actions['expression'].addPossibility(
-    [actions["var"], TokenType.S_EQ, actions["expression"]])
+    [actions["var"], TokenType.S_SET, actions["expression"]])
 actions['expression'].addPossibility([actions["simple-expression"]])
 
 # var
-actions['var'].addPossibility([TokenType.R_ID])
 actions['var'].addPossibility(
     [TokenType.R_ID, TokenType.S_LB, actions["expression"], TokenType.S_RB])
+actions['var'].addPossibility([TokenType.R_ID])
 
 # simple-expression
 actions['simple-expression'].addPossibility(
@@ -290,18 +297,22 @@ actions['relop'].addPossibility([TokenType.S_NEQ])
 
 # additive-expression
 actions['additive-expression'].addPossibility(
-    [actions["additive-expression"], actions["addop"], actions["term"]])
-actions['additive-expression'].addPossibility([actions["term"]])
+    [actions["term"], actions["additive-expression*"]])
+
+actions['additive-expression*'].addPossibility(
+    [actions["addop"], actions["term"], actions['additive-expression*']])
+actions['additive-expression*'].addPossibility([])
 
 # addop
 actions['addop'].addPossibility([TokenType.S_PLUS])
 actions['addop'].addPossibility([TokenType.S_MIN])
 
 # term
-actions['term'].addPossibility(
-    [actions["term"], actions["mulop"], actions["factor"]])
-actions['term'].addPossibility([actions["factor"]])
+actions['term'].addPossibility([actions["factor"], actions['term*']])
 
+actions['term*'].addPossibility(
+    [actions["mulop"], actions["factor"], actions["term*"]])
+actions['term*'].addPossibility([])
 # mulop
 actions['mulop'].addPossibility([TokenType.S_TIMES])
 actions['mulop'].addPossibility([TokenType.S_DIV])
@@ -309,8 +320,8 @@ actions['mulop'].addPossibility([TokenType.S_DIV])
 # factor
 actions['factor'].addPossibility(
     [TokenType.S_LP, actions["expression"], TokenType.S_RP])
-actions['factor'].addPossibility([actions["var"]])
 actions['factor'].addPossibility([actions["call"]])
+actions['factor'].addPossibility([actions["var"]])
 actions['factor'].addPossibility([TokenType.R_NUM])
 
 # call
@@ -319,12 +330,17 @@ actions['call'].addPossibility(
 
 # args
 actions['args'].addPossibility([actions["arg-list"]])
-actions['args'].addPossibility([ ])
+actions['args'].addPossibility([])
 
 # arg-list
-actions['arg-list'].addPossibility([actions["arg-list"],
-                                   TokenType.S_COMMA, actions["expression"]])
-actions['arg-list'].addPossibility([actions["expression"]])
+actions['arg-list'].addPossibility([
+                                    actions["expression"], actions["arg-list*"]])
+
+# TODO error here...
+actions['arg-list*'].addPossibility([
+                                    TokenType.S_COMMA, actions["expression"], actions["arg-list*"]])
+actions['arg-list*'].addPossibility([])
+
 
 
 def noneAction(**kwargs):
@@ -332,6 +348,10 @@ def noneAction(**kwargs):
 
 
 def parser(imprime=True):
+    global treeStart
+
+    logger.info("Tokenizing")
+
     tokens = getToken(imprime)
 
     logger.info("Creating AST")
@@ -343,8 +363,11 @@ def parser(imprime=True):
     logger.info("Finished AST")
 
     if len(treeStart._children) == 0:
-        logger.error(f"Failed to create AST, Expected {latestError[1]} at col {latestError[2][0]} line {latestError[2][1]}")
+        logger.error(
+            f"Failed to create AST, Expected '{latestError[1]}' at ln {latestError[2][1] + 1}, col {latestError[2][2]}.")
 
     treeStart.print(True)
+
+    logger.info('Created AST')
 
     return treeStart
